@@ -1,8 +1,8 @@
-version: "3.8"
-
 services:
   user-service:
     build: .
     container_name: user-service
     restart: always
+    networks:
+      - att-network
 
