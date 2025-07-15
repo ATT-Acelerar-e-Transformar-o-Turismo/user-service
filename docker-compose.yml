@@ -3,6 +3,4 @@ services:
     build: .
     container_name: user-service
     restart: always
-    networks:
-      - att-network
 
