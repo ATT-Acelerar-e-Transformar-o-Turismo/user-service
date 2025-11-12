@@ -2,7 +2,15 @@ services:
   user-service:
     build: .
     container_name: user-service
+    environment:
+      - ORIGINS=${ORIGINS:-localhost}
     restart: always
-    networks:
-      - att-network
-
+    develop:
+      watch:
+        - action: sync
+          path: ./app
+          target: /app
+          ignore:
+            - __pycache__/
+        - action: rebuild
+          path: requirements.txt
