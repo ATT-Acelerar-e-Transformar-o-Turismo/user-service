@@ -4,7 +4,17 @@ services:
     container_name: user-service
     environment:
       - ORIGINS=${ORIGINS:-localhost}
+      - MONGODB_URL=mongodb://user-mongo:27017
+      - SECRET_KEY=${SECRET_KEY:-your-secret-key-change-in-production}
+      - DEFAULT_ADMIN_EMAIL=${DEFAULT_ADMIN_EMAIL:-admin@example.com}
+      - DEFAULT_ADMIN_PASSWORD=${DEFAULT_ADMIN_PASSWORD:-admin}
+      - DEFAULT_ADMIN_NAME=${DEFAULT_ADMIN_NAME:-Administrator}
     restart: always
+    depends_on:
+      user-mongo:
+        condition: service_healthy
+    networks:
+      - user-network
     develop:
       watch:
         - action: sync
@@ -14,3 +24,27 @@ services:
             - __pycache__/
         - action: rebuild
           path: requirements.txt
+
+  user-mongo:
+    image: mongo:latest
+    container_name: user-mongo
+    environment:
+      - MONGO_INITDB_DATABASE=users
+    volumes:
+      - user_db:/data/db
+    restart: always
+    networks:
+      - user-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  user_db:
+
+networks:
+  user-network:
+    name: user-network
