@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from .database import connect_to_mongo, close_mongo_connection
 from .routes import router
+from .user_routes import router as user_router
 from .user_service import get_user_service
 
 load_dotenv()
@@ -42,6 +43,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(router, prefix="/auth", tags=["authentication"])
+app.include_router(user_router, prefix="/users", tags=["user management"])
 
 @app.get("/")
 def read_root():
