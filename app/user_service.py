@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 import os
 from bson import ObjectId
 from .database import get_collection
@@ -86,6 +86,59 @@ class UserService:
         except Exception:
             return None
         return None
+
+    async def get_all_users(self, skip: int = 0, limit: int = 100) -> List[UserResponse]:
+        """Get all users with pagination"""
+        cursor = self.collection.find().skip(skip).limit(limit)
+        users = []
+        async for user_data in cursor:
+            user_data["_id"] = str(user_data["_id"])
+            user = User(**user_data)
+            users.append(UserResponse(
+                id=user.id,
+                email=user.email,
+                full_name=user.full_name,
+                role=user.role,
+                is_active=user.is_active,
+                created_at=user.created_at,
+                last_login_at=user_data.get('last_login_at', None)
+            ))
+        return users
+
+    async def count_admin_users(self) -> int:
+        """Count the number of admin users"""
+        count = await self.collection.count_documents({"role": "admin"})
+        return count
+
+    async def update_user_role(self, user_id: str, role: str) -> Optional[UserResponse]:
+        """Update user role"""
+        if role not in ["admin", "user"]:
+            raise ValueError("Invalid role. Must be 'admin' or 'user'")
+
+        # If changing from admin to user, check if this is the last admin
+        if role == "user":
+            current_user = await self.get_user_by_id(user_id)
+            print(f"DEBUG: Current user role: {current_user.role if current_user else 'None'}")
+            if current_user and current_user.role == "admin":
+                admin_count = await self.count_admin_users()
+                print(f"DEBUG: Admin count: {admin_count}")
+                if admin_count <= 1:
+                    print("DEBUG: Blocking removal of last admin")
+                    raise ValueError("Cannot remove admin role from the last administrator")
+
+        return await self.update_user(user_id, {"role": role})
+
+    async def delete_user(self, user_id: str) -> bool:
+        """Delete user by ID"""
+        # Check if this is the last admin before deletion
+        user_to_delete = await self.get_user_by_id(user_id)
+        if user_to_delete and user_to_delete.role == "admin":
+            admin_count = await self.count_admin_users()
+            if admin_count <= 1:
+                raise ValueError("Cannot delete the last administrator")
+
+        result = await self.collection.delete_one({"_id": ObjectId(user_id)})
+        return result.deleted_count > 0
 
     async def create_default_admin(self):
         """Create default admin user if it doesn't exist"""

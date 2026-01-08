@@ -36,6 +36,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     created_at: datetime
+    last_login_at: Optional[datetime] = None
 
 class Token(BaseModel):
     access_token: str
@@ -44,3 +45,11 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+class UserRoleUpdate(BaseModel):
+    role: str
+
+class UserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    full_name: Optional[str] = None
+    is_active: Optional[bool] = None

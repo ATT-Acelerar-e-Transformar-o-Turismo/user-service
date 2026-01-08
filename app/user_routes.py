@@ -37,14 +37,8 @@ async def get_all_users(
 ):
     """Get all users (admin only)"""
     user_service = get_user_service()
-    try:
-        users = await user_service.get_all_users(skip=skip, limit=limit)
-        return users
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch users"
-        )
+    users = await user_service.get_all_users(skip=skip, limit=limit)
+    return users
 
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user_by_id(
@@ -146,11 +140,17 @@ async def delete_user(
             detail="Cannot delete your own account"
         )
 
-    success = await user_service.delete_user(user_id)
-    if not success:
+    try:
+        success = await user_service.delete_user(user_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+    except ValueError as e:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
         )
 
     return {"message": "User deleted successfully"}
