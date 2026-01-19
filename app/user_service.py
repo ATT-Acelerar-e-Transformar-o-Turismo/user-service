@@ -21,8 +21,6 @@ VALID_ROLES = {"admin", "user"}
 
 
 class UserService:
-    """Service for user management including authentication and authorization."""
-
     def __init__(self) -> None:
         self._collection_name = COLLECTION_NAME
 
@@ -30,8 +28,17 @@ class UserService:
     def collection(self):
         return get_collection(self._collection_name)
 
+    def _to_user_response(self, user: User) -> UserResponse:
+        return UserResponse(
+            id=user.id,
+            email=user.email,
+            full_name=user.full_name,
+            role=user.role,
+            is_active=user.is_active,
+            created_at=user.created_at
+        )
+
     async def create_user(self, user_data: UserCreate) -> UserResponse:
-        """Create a new user with hashed password storage."""
         existing_user = await self.get_user_by_email(user_data.email)
         if existing_user:
             raise UserAlreadyExistsError(f"Email already registered: {user_data.email}")
@@ -44,17 +51,9 @@ class UserService:
         user_dict["_id"] = str(result.inserted_id)
 
         user = User(**user_dict)
-        return UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            role=user.role,
-            is_active=user.is_active,
-            created_at=user.created_at
-        )
+        return self._to_user_response(user)
 
     async def get_user_by_email(self, email: str) -> Optional[User]:
-        """Get user by email"""
         user_data = await self.collection.find_one({"email": email})
         if user_data:
             user_data["_id"] = str(user_data["_id"])
@@ -62,7 +61,6 @@ class UserService:
         return None
 
     async def get_user_by_id(self, user_id: str) -> Optional[User]:
-        """Get user by ID"""
         try:
             user_data = await self.collection.find_one({"_id": ObjectId(user_id)})
             if user_data:
@@ -74,7 +72,6 @@ class UserService:
         return None
 
     async def authenticate_user(self, email: str, password: str) -> Optional[User]:
-        """Authenticate user with email and password"""
         user = await self.get_user_by_email(email)
         if not user:
             return None
@@ -83,7 +80,6 @@ class UserService:
         return user
 
     async def update_user(self, user_id: str, update_data: dict) -> Optional[UserResponse]:
-        """Update user information"""
         try:
             await self.collection.update_one(
                 {"_id": ObjectId(user_id)},
@@ -91,44 +87,26 @@ class UserService:
             )
             updated_user = await self.get_user_by_id(user_id)
             if updated_user:
-                return UserResponse(
-                    id=updated_user.id,
-                    email=updated_user.email,
-                    full_name=updated_user.full_name,
-                    role=updated_user.role,
-                    is_active=updated_user.is_active,
-                    created_at=updated_user.created_at
-                )
+                return self._to_user_response(updated_user)
         except InvalidId as e:
             logger.error(f"Invalid ObjectId format for user_id={user_id}: {e}")
             return None
         return None
 
     async def get_all_users(self, skip: int = 0, limit: int = 100) -> List[UserResponse]:
-        """Get all users with pagination"""
         cursor = self.collection.find().skip(skip).limit(limit)
         users = []
         async for user_data in cursor:
             user_data["_id"] = str(user_data["_id"])
             user = User(**user_data)
-            users.append(UserResponse(
-                id=user.id,
-                email=user.email,
-                full_name=user.full_name,
-                role=user.role,
-                is_active=user.is_active,
-                created_at=user.created_at,
-                last_login_at=user_data.get('last_login_at', None)
-            ))
+            users.append(self._to_user_response(user))
         return users
 
     async def count_admin_users(self) -> int:
-        """Count the number of admin users"""
         count = await self.collection.count_documents({"role": "admin"})
         return count
 
     async def update_user_role(self, user_id: str, role: str) -> Optional[UserResponse]:
-        """Update user role with last admin protection."""
         if role not in VALID_ROLES:
             raise InvalidRoleError(f"Invalid role: {role}")
 
@@ -142,7 +120,6 @@ class UserService:
         return await self.update_user(user_id, {"role": role})
 
     async def delete_user(self, user_id: str) -> bool:
-        """Delete user with last admin protection."""
         user_to_delete = await self.get_user_by_id(user_id)
         if user_to_delete and user_to_delete.role == "admin":
             admin_count = await self.count_admin_users()
@@ -153,7 +130,6 @@ class UserService:
         return result.deleted_count > 0
 
     async def create_default_admin(self) -> Optional[UserResponse]:
-        """Bootstrap default admin user from environment configuration."""
         admin_email = settings.DEFAULT_ADMIN_EMAIL
         admin_password = settings.DEFAULT_ADMIN_PASSWORD
         admin_name = settings.DEFAULT_ADMIN_NAME
@@ -179,5 +155,4 @@ class UserService:
 
 
 def get_user_service() -> UserService:
-    """Dependency injection factory for UserService."""
     return UserService()

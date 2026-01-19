@@ -5,7 +5,8 @@ import logging
 
 from .models import UserCreate, UserLogin, Token, UserResponse
 from .user_service import get_user_service
-from .auth import create_access_token, verify_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from .auth import create_access_token, verify_token
+from .config import settings
 from .exceptions import UserAlreadyExistsError
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,6 @@ security = HTTPBearer()
 
 @router.post("/register", response_model=UserResponse)
 async def register_user(user_data: UserCreate):
-    """Register a new user"""
     user_service = get_user_service()
     try:
         user = await user_service.create_user(user_data)
@@ -34,7 +34,6 @@ async def register_user(user_data: UserCreate):
 
 @router.post("/login", response_model=Token)
 async def login_user(login_data: UserLogin):
-    """Authenticate user and return access token"""
     user_service = get_user_service()
 
     user = await user_service.authenticate_user(login_data.email, login_data.password)
@@ -45,7 +44,7 @@ async def login_user(login_data: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     if login_data.remember_me:
         access_token_expires = timedelta(days=30)
 
@@ -66,7 +65,6 @@ async def login_user(login_data: UserLogin):
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Get current user information"""
     token_data = verify_token(credentials.credentials)
     user_service = get_user_service()
 
@@ -89,10 +87,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @router.post("/logout")
 async def logout_user():
-    """Logout user (client should discard token)"""
     return {"message": "Successfully logged out"}
 
 @router.get("/health")
 async def health_check():
-    """Health check endpoint"""
     return {"status": "healthy"}
