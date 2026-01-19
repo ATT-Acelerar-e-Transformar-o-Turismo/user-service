@@ -1,28 +1,55 @@
-import os
-from motor.motor_asyncio import AsyncIOMotorClient
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from typing import Optional
 
-class Database:
-    client: Optional[AsyncIOMotorClient] = None
-    database = None
+from .config import settings
+from .exceptions import DatabaseConnectionError
 
-db = Database()
 
-async def get_database() -> AsyncIOMotorClient:
-    return db.database
+class DatabaseManager:
+    """Manages MongoDB connection lifecycle using pydantic-settings configuration."""
 
-async def connect_to_mongo():
-    """Create database connection"""
-    db.client = AsyncIOMotorClient(os.getenv("MONGODB_URL", "mongodb://localhost:27017"))
-    db.database = db.client.users
+    def __init__(self) -> None:
+        self._client: Optional[AsyncIOMotorClient] = None
+        self._database: Optional[AsyncIOMotorDatabase] = None
 
-async def close_mongo_connection():
-    """Close database connection"""
-    if db.client:
-        db.client.close()
+    @property
+    def client(self) -> AsyncIOMotorClient:
+        if self._client is None:
+            raise DatabaseConnectionError("Database client not initialized. Call connect() first.")
+        return self._client
+
+    @property
+    def database(self) -> AsyncIOMotorDatabase:
+        if self._database is None:
+            raise DatabaseConnectionError("Database not initialized. Call connect() first.")
+        return self._database
+
+    async def connect(self) -> None:
+        """Establish database connection using configuration from pydantic-settings."""
+        if self._client is None:
+            self._client = AsyncIOMotorClient(settings.MONGODB_URL)
+            self._database = self._client[settings.DATABASE_NAME]
+
+    async def disconnect(self) -> None:
+        """Close database connection."""
+        if self._client:
+            self._client.close()
+            self._client = None
+            self._database = None
+
+    def get_collection(self, collection_name: str):
+        """Get a specific collection from the database."""
+        return self.database[collection_name]
+
+
+db_manager = DatabaseManager()
+
+
+async def get_database() -> AsyncIOMotorDatabase:
+    """Dependency injection for database access."""
+    return db_manager.database
+
 
 def get_collection(collection_name: str):
-    """Get a specific collection"""
-    if db.database is None:
-        raise RuntimeError("Database not connected. Make sure to call connect_to_mongo() first.")
-    return db.database[collection_name]
+    """Get a specific collection by name."""
+    return db_manager.get_collection(collection_name)

@@ -1,26 +1,41 @@
 from typing import Optional, List
-import os
 from bson import ObjectId
+from bson.errors import InvalidId
+import logging
+
+from .config import settings
 from .database import get_collection
 from .models import User, UserCreate, UserResponse
 from .auth import get_password_hash, verify_password
+from .exceptions import (
+    UserAlreadyExistsError,
+    LastAdminProtectionError,
+    InvalidRoleError
+)
+
+logger = logging.getLogger(__name__)
+
+
+COLLECTION_NAME = "users"
+VALID_ROLES = {"admin", "user"}
+
 
 class UserService:
-    def __init__(self):
-        self.collection_name = "users"
+    """Service for user management including authentication and authorization."""
+
+    def __init__(self) -> None:
+        self._collection_name = COLLECTION_NAME
 
     @property
     def collection(self):
-        return get_collection(self.collection_name)
+        return get_collection(self._collection_name)
 
     async def create_user(self, user_data: UserCreate) -> UserResponse:
-        """Create a new user"""
-        # Check if user already exists
+        """Create a new user with hashed password storage."""
         existing_user = await self.get_user_by_email(user_data.email)
         if existing_user:
-            raise ValueError("Email already registered")
+            raise UserAlreadyExistsError(f"Email already registered: {user_data.email}")
 
-        # Hash password and create user
         hashed_password = get_password_hash(user_data.password)
         user_dict = user_data.model_dump(exclude={"password"})
         user_dict["hashed_password"] = hashed_password
@@ -53,7 +68,8 @@ class UserService:
             if user_data:
                 user_data["_id"] = str(user_data["_id"])
                 return User(**user_data)
-        except Exception:
+        except InvalidId as e:
+            logger.warning(f"Invalid ObjectId format for user_id={user_id}: {e}")
             return None
         return None
 
@@ -83,7 +99,8 @@ class UserService:
                     is_active=updated_user.is_active,
                     created_at=updated_user.created_at
                 )
-        except Exception:
+        except InvalidId as e:
+            logger.error(f"Invalid ObjectId format for user_id={user_id}: {e}")
             return None
         return None
 
@@ -111,48 +128,40 @@ class UserService:
         return count
 
     async def update_user_role(self, user_id: str, role: str) -> Optional[UserResponse]:
-        """Update user role"""
-        if role not in ["admin", "user"]:
-            raise ValueError("Invalid role. Must be 'admin' or 'user'")
+        """Update user role with last admin protection."""
+        if role not in VALID_ROLES:
+            raise InvalidRoleError(f"Invalid role: {role}")
 
-        # If changing from admin to user, check if this is the last admin
         if role == "user":
             current_user = await self.get_user_by_id(user_id)
-            print(f"DEBUG: Current user role: {current_user.role if current_user else 'None'}")
             if current_user and current_user.role == "admin":
                 admin_count = await self.count_admin_users()
-                print(f"DEBUG: Admin count: {admin_count}")
                 if admin_count <= 1:
-                    print("DEBUG: Blocking removal of last admin")
-                    raise ValueError("Cannot remove admin role from the last administrator")
+                    raise LastAdminProtectionError("Cannot remove admin role from the last administrator")
 
         return await self.update_user(user_id, {"role": role})
 
     async def delete_user(self, user_id: str) -> bool:
-        """Delete user by ID"""
-        # Check if this is the last admin before deletion
+        """Delete user with last admin protection."""
         user_to_delete = await self.get_user_by_id(user_id)
         if user_to_delete and user_to_delete.role == "admin":
             admin_count = await self.count_admin_users()
             if admin_count <= 1:
-                raise ValueError("Cannot delete the last administrator")
+                raise LastAdminProtectionError("Cannot delete the last administrator")
 
         result = await self.collection.delete_one({"_id": ObjectId(user_id)})
         return result.deleted_count > 0
 
-    async def create_default_admin(self):
-        """Create default admin user if it doesn't exist"""
-        admin_email = os.getenv("DEFAULT_ADMIN_EMAIL", "admin@example.com")
-        admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD", "admin")
-        admin_name = os.getenv("DEFAULT_ADMIN_NAME", "Administrator")
+    async def create_default_admin(self) -> Optional[UserResponse]:
+        """Bootstrap default admin user from environment configuration."""
+        admin_email = settings.DEFAULT_ADMIN_EMAIL
+        admin_password = settings.DEFAULT_ADMIN_PASSWORD
+        admin_name = settings.DEFAULT_ADMIN_NAME
 
-        # Check if admin user already exists
         existing_admin = await self.get_user_by_email(admin_email)
         if existing_admin:
-            print(f"Default admin user already exists: {admin_email}")
-            return existing_admin
+            return None
 
-        # Create admin user
         try:
             admin_data = UserCreate(
                 email=admin_email,
@@ -162,12 +171,13 @@ class UserService:
             )
 
             admin_user = await self.create_user(admin_data)
-            print(f"Default admin user created: {admin_email}")
             return admin_user
 
-        except Exception as e:
-            print(f"Error creating default admin user: {e}")
+        except (ValueError, UserAlreadyExistsError) as e:
+            logger.error(f"Failed to create default admin: {e}")
             return None
 
-def get_user_service():
+
+def get_user_service() -> UserService:
+    """Dependency injection factory for UserService."""
     return UserService()

@@ -1,28 +1,25 @@
+from typing import Dict
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-import os
-from dotenv import load_dotenv
 
-from .database import connect_to_mongo, close_mongo_connection
+from .config import settings
+from .database import db_manager
 from .routes import router
 from .user_routes import router as user_router
 from .user_service import get_user_service
 
-load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
-    await connect_to_mongo()
+    await db_manager.connect()
 
-    # Create default admin user
     user_service = get_user_service()
     await user_service.create_default_admin()
 
     yield
-    # Shutdown
-    await close_mongo_connection()
+    await db_manager.disconnect()
+
 
 app = FastAPI(
     title="User Service API",
@@ -31,8 +28,7 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration
-origins = os.getenv("ORIGINS", "localhost").split(",")
+origins = settings.ORIGINS.split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -41,10 +37,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
 app.include_router(router, prefix="/auth", tags=["authentication"])
 app.include_router(user_router, prefix="/users", tags=["user management"])
 
+
 @app.get("/")
-def read_root():
+def read_root() -> Dict[str, str]:
     return {"message": "User Service API - Authentication and User Management"}

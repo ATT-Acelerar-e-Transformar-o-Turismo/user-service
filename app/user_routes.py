@@ -1,9 +1,14 @@
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
+import logging
+
 from .models import UserResponse, UserRoleUpdate, UserUpdate
 from .user_service import get_user_service
 from .auth import verify_token
+from .exceptions import LastAdminProtectionError, InvalidRoleError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 security = HTTPBearer()
@@ -82,15 +87,15 @@ async def update_user_role(
                 detail="User not found"
             )
         return updated_user
-    except ValueError as e:
+    except (ValueError, InvalidRoleError) as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-    except Exception as e:
+    except LastAdminProtectionError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user role"
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
         )
 
 @router.put("/{user_id}", response_model=UserResponse)
@@ -119,10 +124,17 @@ async def update_user(
                 detail="User not found"
             )
         return updated_user
-    except Exception as e:
+    except ValueError as e:
+        logger.error(f"Invalid data updating user {user_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update user"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Database connection error updating user {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service unavailable"
         )
 
 @router.delete("/{user_id}")

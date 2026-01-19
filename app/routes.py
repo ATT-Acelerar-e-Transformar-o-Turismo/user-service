@@ -1,9 +1,14 @@
 from datetime import timedelta
 from fastapi import APIRouter, HTTPException, status, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import logging
+
 from .models import UserCreate, UserLogin, Token, UserResponse
 from .user_service import get_user_service
 from .auth import create_access_token, verify_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from .exceptions import UserAlreadyExistsError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 security = HTTPBearer()
@@ -15,15 +20,16 @@ async def register_user(user_data: UserCreate):
     try:
         user = await user_service.create_user(user_data)
         return user
-    except ValueError as e:
+    except (ValueError, UserAlreadyExistsError) as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-    except Exception as e:
+    except (ConnectionError, TimeoutError) as e:
+        logger.error(f"Database connection error during registration: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create user"
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database service unavailable"
         )
 
 @router.post("/login", response_model=Token)
@@ -39,10 +45,9 @@ async def login_user(login_data: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Create access token
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     if login_data.remember_me:
-        access_token_expires = timedelta(days=30)  # Extended expiry for remember me
+        access_token_expires = timedelta(days=30)
 
     access_token = create_access_token(
         data={"sub": user.email}, expires_delta=access_token_expires
