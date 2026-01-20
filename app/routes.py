@@ -5,7 +5,8 @@ import logging
 
 from .models import UserCreate, UserLogin, Token, UserResponse
 from .user_service import get_user_service
-from .auth import create_access_token, verify_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from .auth import create_access_token, verify_token
+from .config import settings
 from .exceptions import UserAlreadyExistsError
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ async def login_user(login_data: UserLogin):
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     if login_data.remember_me:
         access_token_expires = timedelta(days=30)
 
