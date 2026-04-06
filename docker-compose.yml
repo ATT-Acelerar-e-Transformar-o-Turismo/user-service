@@ -1,6 +1,8 @@
 services:
   user-service:
-    build: .
+    build:
+      context: .
+      network: host
     container_name: user-service
     environment:
       - ORIGINS=${ORIGINS:-localhost}
