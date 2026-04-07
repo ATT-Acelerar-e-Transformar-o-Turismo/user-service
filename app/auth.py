@@ -1,11 +1,18 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
+import httpx
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import HTTPException, status
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from .config import settings
 from .models import TokenData
+
+JWKS_URL = "http://att-keycloak:7080/auth/realms/att/protocol/openid-connect/certs"
+ALGORITHMS_KC = ["RS256"]
+_jwks_cache = None
+_kc_security = HTTPBearer()
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -52,3 +59,37 @@ def verify_token(token: str) -> TokenData:
         raise credentials_exception
 
     return token_data
+
+
+async def _get_jwks():
+    global _jwks_cache
+    if not _jwks_cache:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(JWKS_URL)
+            resp.raise_for_status()
+            _jwks_cache = resp.json()
+    return _jwks_cache
+
+
+async def require_admin(
+    credentials: HTTPAuthorizationCredentials = Depends(_kc_security),
+):
+    token = credentials.credentials
+    try:
+        jwks = await _get_jwks()
+        payload = jwt.decode(
+            token, jwks, algorithms=ALGORITHMS_KC, options={"verify_aud": False}
+        )
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    roles = payload.get("realm_access", {}).get("roles", [])
+    if "admin" not in roles:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return payload

@@ -1,44 +1,21 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import List
 import logging
 
 from .models import UserResponse, UserRoleUpdate, UserUpdate
 from .user_service import get_user_service
-from .auth import verify_token
+from .auth import require_admin
 from .exceptions import LastAdminProtectionError, InvalidRoleError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-security = HTTPBearer()
-
-async def get_current_admin_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Dependency to get current admin user"""
-    token_data = verify_token(credentials.credentials)
-    user_service = get_user_service()
-
-    user = await user_service.get_user_by_email(token_data.email)
-    if user is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
-        )
-
-    return user
 
 @router.get("/", response_model=List[UserResponse])
 async def get_all_users(
     skip: int = 0,
     limit: int = 100,
-    current_admin: dict = Depends(get_current_admin_user)
+    current_admin: dict = Depends(require_admin)
 ):
     """Get all users (admin only)"""
     user_service = get_user_service()
@@ -48,7 +25,7 @@ async def get_all_users(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user_by_id(
     user_id: str,
-    current_admin: dict = Depends(get_current_admin_user)
+    current_admin: dict = Depends(require_admin)
 ):
     """Get user by ID (admin only)"""
     user_service = get_user_service()
@@ -74,7 +51,7 @@ async def get_user_by_id(
 async def update_user_role(
     user_id: str,
     role_data: UserRoleUpdate,
-    current_admin: dict = Depends(get_current_admin_user)
+    current_admin: dict = Depends(require_admin)
 ):
     """Update user role (admin only)"""
     user_service = get_user_service()
@@ -102,7 +79,7 @@ async def update_user_role(
 async def update_user(
     user_id: str,
     user_data: UserUpdate,
-    current_admin: dict = Depends(get_current_admin_user)
+    current_admin: dict = Depends(require_admin)
 ):
     """Update user information (admin only)"""
     user_service = get_user_service()
@@ -140,7 +117,7 @@ async def update_user(
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: str,
-    current_admin: dict = Depends(get_current_admin_user)
+    current_admin: dict = Depends(require_admin)
 ):
     """Delete user (admin only)"""
     user_service = get_user_service()
