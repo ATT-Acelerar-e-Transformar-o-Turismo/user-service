@@ -68,12 +68,23 @@ async def _get_jwks():
     global _jwks_cache, _jwks_fetched_at
     now = time.monotonic()
     if not _jwks_cache or (now - _jwks_fetched_at) > JWKS_TTL:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(JWKS_URL)
             resp.raise_for_status()
             _jwks_cache = resp.json()
             _jwks_fetched_at = now
     return _jwks_cache
+
+
+def _get_signing_key(jwks, token):
+    header = jwt.get_unverified_header(token)
+    kid = header.get("kid")
+    if not kid:
+        raise JWTError("Token header missing 'kid'")
+    for key in jwks.get("keys", []):
+        if key.get("kid") == kid:
+            return key
+    raise JWTError("No matching key found")
 
 
 async def require_admin(
@@ -82,8 +93,9 @@ async def require_admin(
     token = credentials.credentials
     try:
         jwks = await _get_jwks()
+        key = _get_signing_key(jwks, token)
         payload = jwt.decode(
-            token, jwks, algorithms=ALGORITHMS_KC, options={"verify_aud": False}
+            token, key, algorithms=ALGORITHMS_KC, options={"verify_aud": False}
         )
     except JWTError:
         raise HTTPException(
