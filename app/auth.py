@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Dict
 import httpx
@@ -11,7 +12,9 @@ from .models import TokenData
 
 JWKS_URL = "http://att-keycloak:7080/auth/realms/att/protocol/openid-connect/certs"
 ALGORITHMS_KC = ["RS256"]
+JWKS_TTL = 300
 _jwks_cache = None
+_jwks_fetched_at = 0
 _kc_security = HTTPBearer()
 
 
@@ -62,12 +65,14 @@ def verify_token(token: str) -> TokenData:
 
 
 async def _get_jwks():
-    global _jwks_cache
-    if not _jwks_cache:
+    global _jwks_cache, _jwks_fetched_at
+    now = time.monotonic()
+    if not _jwks_cache or (now - _jwks_fetched_at) > JWKS_TTL:
         async with httpx.AsyncClient() as client:
             resp = await client.get(JWKS_URL)
             resp.raise_for_status()
             _jwks_cache = resp.json()
+            _jwks_fetched_at = now
     return _jwks_cache
 
 

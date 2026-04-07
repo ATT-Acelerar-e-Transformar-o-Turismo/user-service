@@ -1,8 +1,8 @@
 {
   "realm": "att",
   "enabled": true,
-  "sslRequired": "none",
-  "registrationAllowed": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
   "resetPasswordAllowed": true,
@@ -32,9 +32,9 @@
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": true,
+      "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
-      "redirectUris": ["*"],
+      "redirectUris": ["https://degeit-roots.ua.pt/*", "http://localhost/*", "http://localhost:80/*"],
       "webOrigins": ["+"],
       "protocol": "openid-connect",
       "attributes": {
