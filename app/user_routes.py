@@ -123,7 +123,7 @@ async def delete_user(
     user_service = get_user_service()
 
     # Prevent admin from deleting themselves
-    if current_admin.id == user_id:
+    if current_admin.get("sub") == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Cannot delete your own account"
