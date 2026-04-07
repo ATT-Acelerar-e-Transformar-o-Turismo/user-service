@@ -32,7 +32,7 @@
       "enabled": true,
       "publicClient": true,
       "standardFlowEnabled": true,
-      "directAccessGrantsEnabled": false,
+      "directAccessGrantsEnabled": true,
       "implicitFlowEnabled": false,
       "redirectUris": ["https://degeit-roots.ua.pt/*", "http://localhost/*", "http://localhost:80/*"],
       "webOrigins": ["+"],
